@@ -25,8 +25,8 @@ class MySQLSlowQueryInput < TailInput
     return MySlog.new
   end
 
-  def search_last_use_database
-    last_use_query = File.open(@path).grep(/^use /).last
+  def search_last_use_database(path)
+    last_use_query = File.open(path).grep(/^use /).last
     if last_use_query
       last_use_database = last_use_query.match(/^use ([^;]+)/)
       @last_use_database = last_use_database[1] if last_use_database
@@ -36,6 +36,7 @@ class MySQLSlowQueryInput < TailInput
 
   def receive_lines(lines, tail_watcher)
     es = Fluent::MultiEventStream.new
+    path = tail_watcher.path
     @parser.divide(lines).each do |record|
       begin
         record = stringify_keys @parser.parse_record(record)
@@ -46,9 +47,10 @@ class MySQLSlowQueryInput < TailInput
         end
 
         if record['db'].nil? || record['db'].empty?
-          record['db'] = @last_use_database ? @last_use_database : search_last_use_database()
+          record['db'] = @last_use_database ? @last_use_database : search_last_use_database(path)
         end
 
+        record[@path_key] ||= tail_watcher.path unless @path_key.nil?
         es.add(time, record)
       rescue
         $log.warn record, :error=>$!.to_s
